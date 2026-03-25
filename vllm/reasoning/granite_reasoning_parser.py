@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
 import regex as re
@@ -16,6 +16,24 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.responses.protocol import ResponsesRequest
 
 logger = init_logger(__name__)
+
+
+def _find_subsequence(seq: Sequence[int], subseq: list[int]) -> int:
+    """Find the starting index of *subseq* in *seq*, or -1 if not found."""
+    sub_len = len(subseq)
+    for i in range(len(seq) - sub_len + 1):
+        if seq[i : i + sub_len] == subseq:
+            return i
+    return -1
+
+
+def _rfind_subsequence(seq: Sequence[int], subseq: list[int]) -> int:
+    """Find the last starting index of *subseq* in *seq*, or -1."""
+    sub_len = len(subseq)
+    for i in range(len(seq) - sub_len, -1, -1):
+        if seq[i : i + sub_len] == subseq:
+            return i
+    return -1
 
 
 class GraniteReasoningParser(ReasoningParser):
@@ -53,6 +71,49 @@ class GraniteReasoningParser(ReasoningParser):
         self.longest_think_start = max(
             len(think_start) for think_start in self.valid_think_starts
         )
+
+        # Pre-tokenize markers for token-ID-based methods
+        # (is_reasoning_end, extract_content_ids)
+        self.response_start_token_seqs: list[list[int]] = [
+            self.model_tokenizer.encode(s, add_special_tokens=False)
+            for s in self.valid_response_starts
+        ]
+
+    def is_reasoning_end(self, input_ids: Sequence[int]) -> bool:
+        """Check whether the response-start marker has appeared in *input_ids*.
+
+        The structured output engine calls this to decide when reasoning is
+        over and constrained generation should kick in.
+        """
+        for seq in self.response_start_token_seqs:
+            if _rfind_subsequence(input_ids, seq) >= 0:
+                return True
+        return False
+
+    def is_reasoning_end_streaming(
+        self, input_ids: Sequence[int], delta_ids: Iterable[int]
+    ) -> bool:
+        """Streaming-optimised variant: only scan if the colon token (the
+        final token of any response marker) appears in *delta_ids*."""
+        # The response markers all end with ":" – if that token is not in
+        # the delta we can skip the expensive full scan.
+        colon_ids = {seq[-1] for seq in self.response_start_token_seqs}
+        if not colon_ids.intersection(delta_ids):
+            return False
+        return self.is_reasoning_end(input_ids)
+
+    def extract_content_ids(self, input_ids: list[int]) -> list[int]:
+        """Return token IDs that follow the response-start marker."""
+        best_end = -1
+        for seq in self.response_start_token_seqs:
+            idx = _rfind_subsequence(input_ids, seq)
+            if idx >= 0:
+                end = idx + len(seq)
+                if end > best_end:
+                    best_end = end
+        if best_end < 0:
+            return []
+        return input_ids[best_end:]
 
     def extract_reasoning(
         self, model_output: str, request: "ChatCompletionRequest | ResponsesRequest"

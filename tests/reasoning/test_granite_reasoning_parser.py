@@ -14,36 +14,43 @@ SIMPLE_REASONING = {
     "output": f"{START_REASONING}This is a reasoning section{START_RESPONSE}This is the rest",  # noqa: E501
     "reasoning": "This is a reasoning section",
     "content": "This is the rest",
+    "is_reasoning_end": True,
 }
 COMPLETE_REASONING = {
     "output": f"{START_REASONING}This is a reasoning section{START_RESPONSE}",
     "reasoning": "This is a reasoning section",
     "content": None,
+    "is_reasoning_end": True,
 }
 NO_REASONING = {
     "output": "This is content",
     "reasoning": None,
     "content": "This is content",
+    "is_reasoning_end": False,
 }
 MULTIPLE_LINES = {
     "output": f"{START_REASONING}This\nThat{START_RESPONSE}This is the rest\nThat",
     "reasoning": "This\nThat",
     "content": "This is the rest\nThat",
+    "is_reasoning_end": True,
 }
 REASONING_WITH_THINK = {
     "output": f"{START_REASONING}This is a reasoning section{START_RESPONSE}This is the rest",  # noqa: E501
     "reasoning": "This is a reasoning section",
     "content": "This is the rest",
+    "is_reasoning_end": True,
 }
 COMPLETE_REASONING_WITH_THINK = {
     "output": f"{START_REASONING}This is a reasoning section{START_RESPONSE}",
     "reasoning": "This is a reasoning section",
     "content": None,
+    "is_reasoning_end": True,
 }
 MULTIPLE_LINES_WITH_THINK = {
     "output": f"{START_REASONING}This\nThat{START_RESPONSE}This is the rest\nThat",
     "reasoning": "This\nThat",
     "content": "This is the rest\nThat",
+    "is_reasoning_end": True,
 }
 
 TEST_CASES = [
@@ -143,6 +150,15 @@ def test_reasoning(
 
     assert reasoning == param_dict["reasoning"]
     assert content == param_dict["content"]
+
+    output_ids = tokenizer.encode(param_dict["output"], add_special_tokens=False)
+    assert parser.is_reasoning_end(output_ids) is param_dict["is_reasoning_end"]
+
+    content_ids = parser.extract_content_ids(output_ids)
+    if param_dict["is_reasoning_end"] and param_dict["content"] is not None:
+        assert param_dict["content"] in tokenizer.decode(content_ids)
+    else:
+        assert content_ids == []
 
 
 # Additional tests for verifying the correctness of granite streaming; this
@@ -342,3 +358,34 @@ def test_streaming_subcases(param_dict):
         assert isinstance(response, DeltaMessage)
         assert param_dict["reasoning"] == response.reasoning
         assert param_dict["content"] == response.content
+
+
+# Edge cases for is_reasoning_end / extract_content_ids not covered above
+
+
+def test_is_reasoning_end_empty_input():
+    parser = ReasoningParserManager.get_reasoning_parser(parser_name)(tokenizer)
+    assert parser.is_reasoning_end([]) is False
+    assert parser.extract_content_ids([]) == []
+
+
+def test_is_reasoning_end_heres_variant():
+    """The "Here's" contraction variant.
+
+    The test tokenizer (opt-125m) may split contractions differently in
+    context vs standalone, so we splice pre-tokenized marker IDs to
+    guarantee an exact subsequence match.
+    """
+    parser = ReasoningParserManager.get_reasoning_parser(parser_name)(tokenizer)
+    marker_ids = tokenizer.encode("Here's my response:", add_special_tokens=False)
+    prefix_ids = tokenizer.encode("some thinking ", add_special_tokens=False)
+    answer_ids = tokenizer.encode(" answer", add_special_tokens=False)
+    ids = prefix_ids + marker_ids + answer_ids
+    assert parser.is_reasoning_end(ids) is True
+
+
+def test_is_reasoning_end_response_marker_only():
+    """Response marker without a preceding think marker still counts."""
+    parser = ReasoningParserManager.get_reasoning_parser(parser_name)(tokenizer)
+    ids = tokenizer.encode("Here is my response: answer", add_special_tokens=False)
+    assert parser.is_reasoning_end(ids) is True
