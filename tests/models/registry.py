@@ -303,8 +303,14 @@ _TEXT_GENERATION_EXAMPLE_MODELS = {
         "EleutherAI/pythia-70m", {"1b": "EleutherAI/pythia-1.4b"}
     ),
     "GptOssForCausalLM": _HfExamplesInfo("lmsys/gpt-oss-20b-bf16"),
-    "GraniteForCausalLM": _HfExamplesInfo("ibm/PowerLM-3b"),
-    "GraniteMoeForCausalLM": _HfExamplesInfo("ibm/PowerMoE-3b"),
+    "GraniteForCausalLM": _HfExamplesInfo(
+        "ibm/PowerLM-3b",
+        extras={"granite": "ibm-granite/granite-3.2-2b-instruct"},
+    ),
+    "GraniteMoeForCausalLM": _HfExamplesInfo(
+        "ibm/PowerMoE-3b",
+        extras={"granite": "ibm-granite/granite-3.0-1b-a400m-base"},
+    ),
     "GraniteMoeHybridForCausalLM": _HfExamplesInfo(
         "ibm-granite/granite-4.0-tiny-preview"
     ),

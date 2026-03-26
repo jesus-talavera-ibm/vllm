@@ -8,6 +8,8 @@ MODELS = [
     # TODO(sang): Sliding window should be tested separately.
     "ibm/PowerLM-3b",
     "ibm/PowerMoE-3b",
+    "ibm-granite/granite-3.2-2b-instruct",
+    "ibm-granite/granite-3.0-1b-a400m-base",
 ]
 
 
