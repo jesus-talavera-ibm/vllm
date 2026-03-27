@@ -35,14 +35,11 @@ from vllm.tool_parsers.utils import (
 logger = init_logger(__name__)
 
 
-class GraniteToolParser(ToolParser):
+class Granite3ToolParser(ToolParser):
     """
-    Tool call parser for the granite 3.0 models. Intended
+    Tool call parser for the granite 3.0/3.1 models. Intended
     for use with the examples/tool_chat_template_granite.jinja
     template.
-
-    Used when --enable-auto-tool-choice --tool-call-parser granite
-    are all set
     """
 
     def __init__(self, tokenizer: TokenizerLike, tools: list[Tool] | None = None):
@@ -254,3 +251,70 @@ class GraniteToolParser(ToolParser):
                 "Skipping chunk as a result of tool streaming extraction error"
             )
             return None
+
+
+class GraniteToolParser(ToolParser):
+    """
+    Unified Granite tool parser with auto-detection.
+
+    Inspects the tokenizer vocabulary to determine which Granite model
+    generation is being served, then delegates to the appropriate
+    specialized parser:
+
+    - Granite 4.0: uses ``<tool_call>``/``</tool_call>`` XML-style pairs
+    - Granite 20B FC: uses ``<function_call>`` prefix with individual JSON
+    - Granite 3.0/3.1 (default): uses ``<|tool_call|>`` or ``<tool_call>``
+      prefix with a JSON array
+
+    Used when ``--enable-auto-tool-choice --tool-call-parser granite``
+    are set. The explicit parser names ``granite4`` and ``granite-20b-fc``
+    remain available for backwards compatibility.
+    """
+
+    def __init__(self, tokenizer: TokenizerLike, tools: list[Tool] | None = None):
+        super().__init__(tokenizer, tools)
+        vocab = tokenizer.get_vocab()
+
+        if "</tool_call>" in vocab:
+            from vllm.tool_parsers.granite4_tool_parser import Granite4ToolParser
+
+            logger.info("Auto-detected Granite 4.0 tool call format.")
+            self._inner = Granite4ToolParser(tokenizer, tools)
+        elif "<function_call>" in vocab:
+            from vllm.tool_parsers.granite_20b_fc_tool_parser import (
+                Granite20bFCToolParser,
+            )
+
+            logger.info("Auto-detected Granite 20B FC tool call format.")
+            self._inner = Granite20bFCToolParser(tokenizer, tools)
+        else:
+            logger.info("Auto-detected Granite 3.x tool call format.")
+            self._inner = Granite3ToolParser(tokenizer, tools)
+
+    def adjust_request(self, request: ChatCompletionRequest) -> ChatCompletionRequest:
+        return self._inner.adjust_request(request)
+
+    def extract_tool_calls(
+        self, model_output: str, request: ChatCompletionRequest
+    ) -> ExtractedToolCallInformation:
+        return self._inner.extract_tool_calls(model_output, request)
+
+    def extract_tool_calls_streaming(
+        self,
+        previous_text: str,
+        current_text: str,
+        delta_text: str,
+        previous_token_ids: Sequence[int],
+        current_token_ids: Sequence[int],
+        delta_token_ids: Sequence[int],
+        request: ChatCompletionRequest,
+    ) -> DeltaMessage | None:
+        return self._inner.extract_tool_calls_streaming(
+            previous_text,
+            current_text,
+            delta_text,
+            previous_token_ids,
+            current_token_ids,
+            delta_token_ids,
+            request,
+        )

@@ -239,29 +239,34 @@ For Llama 4 model, use `--tool-call-parser llama4_pythonic --chat-template examp
 
 ### IBM Granite
 
+All Granite models can use `--tool-call-parser granite`. The parser automatically detects the model generation from the tokenizer and selects the correct parsing strategy. Parallel function calls are supported across all variants.
+
 Supported models:
 
 * `ibm-granite/granite-4.0-h-small` and other Granite 4.0 models
 
-    Recommended flags: `--tool-call-parser granite4`
-
-* `ibm-granite/granite-3.0-8b-instruct`
-
-    Recommended flags: `--tool-call-parser granite --chat-template examples/tool_chat_template_granite.jinja`
-
-    [examples/tool_chat_template_granite.jinja](../../examples/tool_chat_template_granite.jinja): this is a modified chat template from the original on Hugging Face. Parallel function calls are supported.
+    Recommended flags: `--tool-call-parser granite`
 
 * `ibm-granite/granite-3.1-8b-instruct`
 
     Recommended flags: `--tool-call-parser granite`
 
-    The chat template from Huggingface can be used directly. Parallel function calls are supported.
+    The chat template from Huggingface can be used directly.
+
+* `ibm-granite/granite-3.0-8b-instruct`
+
+    Recommended flags: `--tool-call-parser granite --chat-template examples/tool_chat_template_granite.jinja`
+
+    [examples/tool_chat_template_granite.jinja](../../examples/tool_chat_template_granite.jinja): this is a modified chat template from the original on Hugging Face.
 
 * `ibm-granite/granite-20b-functioncalling`
 
-    Recommended flags: `--tool-call-parser granite-20b-fc --chat-template examples/tool_chat_template_granite_20b_fc.jinja`
+    Recommended flags: `--tool-call-parser granite --chat-template examples/tool_chat_template_granite_20b_fc.jinja`
 
-    [examples/tool_chat_template_granite_20b_fc.jinja](../../examples/tool_chat_template_granite_20b_fc.jinja): this is a modified chat template from the original on Hugging Face, which is not vLLM-compatible. It blends function description elements from the Hermes template and follows the same system prompt as "Response Generation" mode from [the paper](https://arxiv.org/abs/2407.00121). Parallel function calls are supported.
+    [examples/tool_chat_template_granite_20b_fc.jinja](../../examples/tool_chat_template_granite_20b_fc.jinja): this is a modified chat template from the original on Hugging Face, which is not vLLM-compatible. It blends function description elements from the Hermes template and follows the same system prompt as "Response Generation" mode from [the paper](https://arxiv.org/abs/2407.00121).
+
+!!! note
+    The explicit parser names `granite4` and `granite-20b-fc` remain available for backwards compatibility, but `granite` is recommended for all models.
 
 ### InternLM Models (`internlm`)
 
