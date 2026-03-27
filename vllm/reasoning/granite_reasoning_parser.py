@@ -29,6 +29,18 @@ class GraniteReasoningParser(ReasoningParser):
     def __init__(self, tokenizer: PreTrainedTokenizerBase, *args, **kwargs):
         super().__init__(tokenizer, *args, **kwargs)
 
+        chat_kwargs = kwargs.get("chat_template_kwargs", {}) or {}
+        if not chat_kwargs.get("thinking", False):
+            logger.warning(
+                "Granite reasoning parser is active but 'thinking' is not "
+                "enabled in chat_template_kwargs. The model will not produce "
+                "reasoning output. To enable it, pass "
+                "\"--default-chat-template-kwargs '{\"thinking\": true}'\" to "
+                "the server, or include "
+                "\"extra_body={'chat_template_kwargs': {'thinking': True}}\" "
+                "in each client request."
+            )
+
         # NOTE: There have been some observed occurrences of quantized
         # instances of the current models using "Here's" instead of "Here is",
         # so to be safe, we match on both.

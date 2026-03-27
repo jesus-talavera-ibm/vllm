@@ -240,6 +240,40 @@ response = client.chat.completions.create(
 )
 ```
 
+### IBM Granite Reasoning Setup
+
+IBM Granite 3.2 models require explicit opt-in for reasoning via `thinking=True`. Without it, the model will not produce reasoning output even if `--reasoning-parser granite` is set.
+
+**Server setup (reasoning enabled for all requests):**
+
+```bash
+vllm serve ibm-granite/granite-3.2-2b-instruct \
+    --reasoning-parser granite \
+    --default-chat-template-kwargs '{"thinking": true}'
+```
+
+**Client example:**
+
+??? code
+
+    ```python
+    from openai import OpenAI
+
+    client = OpenAI(api_key="EMPTY", base_url="http://localhost:8000/v1")
+    model = client.models.list().data[0].id
+
+    # If the server was started WITHOUT --default-chat-template-kwargs,
+    # you must pass thinking=True per request:
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": "9.11 and 9.8, which is greater?"}],
+        extra_body={"chat_template_kwargs": {"thinking": True}},
+    )
+
+    print("reasoning:", response.choices[0].message.reasoning)
+    print("content:", response.choices[0].message.content)
+    ```
+
 ## Thinking Budget Control
 
 Some models, such as [Qwen3](https://qwen.readthedocs.io/en/latest/getting_started/quickstart.html#thinking-budget), [DeepSeek](https://www.alibabacloud.com/help/en/model-studio/deep-thinking), and [Nemotron3](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16), support a thinking budget that limits the maximum number of tokens used for reasoning.
