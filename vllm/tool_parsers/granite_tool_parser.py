@@ -272,9 +272,20 @@ class GraniteToolParser(ToolParser):
     """
 
     def __init__(self, tokenizer: TokenizerLike, tools: list[Tool] | None = None):
+        # NOTE: super().__init__ initializes streaming state (prev_tool_call_arr,
+        # current_tool_id, etc.) on this wrapper, but those fields are unused —
+        # all method calls delegate to self._inner which has its own state.
+        # The call is still required so that self.model_tokenizer is set.
         super().__init__(tokenizer, tools)
         vocab = tokenizer.get_vocab()
 
+        # Detection precedence matters: check the most specific tokens first.
+        #   1. </tool_call> — only Granite 4.0 adds this closing tag as a
+        #      dedicated vocab token.  Granite 3.x uses an *opening* tag only.
+        #   2. <function_call> — unique to the Granite 20B FC model.
+        #   3. Fallback — Granite 3.0/3.1 (uses <|tool_call|> or <tool_call>).
+        # If a future model's vocab matches an earlier check incorrectly, use
+        # the explicit parser names (granite4 / granite-20b-fc) as an override.
         if "</tool_call>" in vocab:
             from vllm.tool_parsers.granite4_tool_parser import Granite4ToolParser
 

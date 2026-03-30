@@ -239,7 +239,7 @@ For Llama 4 model, use `--tool-call-parser llama4_pythonic --chat-template examp
 
 ### IBM Granite
 
-All Granite models can use `--tool-call-parser granite`. The parser automatically detects the model generation from the tokenizer and selects the correct parsing strategy. Parallel function calls are supported across all variants.
+All Granite models can use `--tool-call-parser granite`. The parser automatically detects the model generation from the tokenizer and selects the correct parsing strategy. Parallel function calls are supported across all variants. Note that some older models still require a model-specific `--chat-template` (see below).
 
 Supported models:
 
