@@ -18,20 +18,11 @@ if TYPE_CHECKING:
 logger = init_logger(__name__)
 
 
-def _find_subsequence(seq: Sequence[int], subseq: list[int]) -> int:
-    """Find the starting index of *subseq* in *seq*, or -1 if not found."""
-    sub_len = len(subseq)
-    for i in range(len(seq) - sub_len + 1):
-        if seq[i : i + sub_len] == subseq:
-            return i
-    return -1
-
-
 def _rfind_subsequence(seq: Sequence[int], subseq: list[int]) -> int:
     """Find the last starting index of *subseq* in *seq*, or -1."""
     sub_len = len(subseq)
     for i in range(len(seq) - sub_len, -1, -1):
-        if seq[i : i + sub_len] == subseq:
+        if list(seq[i : i + sub_len]) == subseq:
             return i
     return -1
 
@@ -78,6 +69,9 @@ class GraniteReasoningParser(ReasoningParser):
             self.model_tokenizer.encode(s, add_special_tokens=False)
             for s in self.valid_response_starts
         ]
+        self._colon_ids: set[int] = {
+            seq[-1] for seq in self.response_start_token_seqs
+        }
 
     def is_reasoning_end(self, input_ids: Sequence[int]) -> bool:
         """Check whether the response-start marker has appeared in *input_ids*.
@@ -97,8 +91,7 @@ class GraniteReasoningParser(ReasoningParser):
         final token of any response marker) appears in *delta_ids*."""
         # The response markers all end with ":" – if that token is not in
         # the delta we can skip the expensive full scan.
-        colon_ids = {seq[-1] for seq in self.response_start_token_seqs}
-        if not colon_ids.intersection(delta_ids):
+        if not self._colon_ids.intersection(delta_ids):
             return False
         return self.is_reasoning_end(input_ids)
 
