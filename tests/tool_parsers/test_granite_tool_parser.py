@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from tests.tool_parsers.common_tests import (
@@ -9,6 +11,13 @@ from tests.tool_parsers.common_tests import (
     ToolParserTests,
 )
 from tests.tool_parsers.utils import run_tool_extraction
+from vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionRequest
+from vllm.tool_parsers.granite4_tool_parser import Granite4ToolParser
+from vllm.tool_parsers.granite_20b_fc_tool_parser import Granite20bFCToolParser
+from vllm.tool_parsers.granite_tool_parser import (
+    Granite3ToolParser,
+    GraniteToolParser,
+)
 
 
 class TestGraniteToolParser(ToolParserTests):
@@ -116,3 +125,115 @@ I'll get that information.""",
             f"Expected 1 tool call from string format, got {len(tool_calls)}"
         )
         assert tool_calls[0].function.name == "get_weather"
+
+
+# --- Auto-detection tests for the unified GraniteToolParser ---
+
+
+def _make_tokenizer_with_vocab(extra_tokens: dict[str, int]):
+    """Create a mock tokenizer with a specific vocabulary."""
+    base_vocab = {"hello": 0, "world": 1}
+    base_vocab.update(extra_tokens)
+    tokenizer = MagicMock()
+    tokenizer.get_vocab.return_value = base_vocab
+    return tokenizer
+
+
+class TestGraniteToolParserAutoDetection:
+    def test_autodetect_granite4(self):
+        """</tool_call> in vocab should select Granite4ToolParser."""
+        tokenizer = _make_tokenizer_with_vocab(
+            {
+                "<tool_call>": 100,
+                "</tool_call>": 101,
+            }
+        )
+        parser = GraniteToolParser(tokenizer)
+        assert isinstance(parser._inner, Granite4ToolParser)
+
+    def test_autodetect_granite_20b_fc(self):
+        """<function_call> in vocab should select Granite20bFCToolParser."""
+        tokenizer = _make_tokenizer_with_vocab(
+            {
+                "<function_call>": 100,
+            }
+        )
+        parser = GraniteToolParser(tokenizer)
+        assert isinstance(parser._inner, Granite20bFCToolParser)
+
+    def test_autodetect_granite3(self):
+        """Default (no special closing tokens) should select Granite3ToolParser."""
+        tokenizer = _make_tokenizer_with_vocab(
+            {
+                "<|tool_call|>": 100,
+            }
+        )
+        parser = GraniteToolParser(tokenizer)
+        assert isinstance(parser._inner, Granite3ToolParser)
+
+    def test_autodetect_fallback(self):
+        """Empty vocab should fall back to Granite3ToolParser."""
+        tokenizer = _make_tokenizer_with_vocab({})
+        parser = GraniteToolParser(tokenizer)
+        assert isinstance(parser._inner, Granite3ToolParser)
+
+
+# --- End-to-end extraction tests through the unified wrapper ---
+
+
+class TestGraniteToolParserE2EDelegation:
+    """Verify that tool extraction actually works end-to-end through
+    the unified GraniteToolParser wrapper for each delegated path."""
+
+    def test_e2e_granite4_extraction(self):
+        """Granite 4.0 path: extract tool calls in XML-pair format."""
+        tokenizer = _make_tokenizer_with_vocab(
+            {"<tool_call>": 100, "</tool_call>": 101}
+        )
+        parser = GraniteToolParser(tokenizer)
+        model_output = (
+            '<tool_call> {"name": "get_weather", '
+            '"arguments": {"city": "Tokyo"}} </tool_call>'
+        )
+        result = parser.extract_tool_calls(model_output, _make_request())
+        assert result.tools_called
+        assert len(result.tool_calls) == 1
+        assert result.tool_calls[0].function.name == "get_weather"
+
+    def test_e2e_granite_20b_fc_extraction(self):
+        """Granite 20B FC path: extract tool calls in <function_call> format."""
+        tokenizer = _make_tokenizer_with_vocab({"<function_call>": 100})
+        parser = GraniteToolParser(tokenizer)
+        model_output = (
+            '<function_call> {"name": "get_weather", "arguments": {"city": "Tokyo"}}'
+        )
+        result = parser.extract_tool_calls(model_output, _make_request())
+        assert result.tools_called
+        assert len(result.tool_calls) == 1
+        assert result.tool_calls[0].function.name == "get_weather"
+
+    def test_e2e_granite3_extraction(self):
+        """Granite 3.x path: extract tool calls in JSON array format."""
+        tokenizer = _make_tokenizer_with_vocab({"<|tool_call|>": 100})
+        parser = GraniteToolParser(tokenizer)
+        model_output = (
+            '<|tool_call|> [{"name": "get_weather", "arguments": {"city": "Tokyo"}}]'
+        )
+        result = parser.extract_tool_calls(model_output, _make_request())
+        assert result.tools_called
+        assert len(result.tool_calls) == 1
+        assert result.tool_calls[0].function.name == "get_weather"
+
+    def test_e2e_no_tool_calls(self):
+        """All paths should return no tool calls for plain text."""
+        tokenizer = _make_tokenizer_with_vocab(
+            {"<tool_call>": 100, "</tool_call>": 101}
+        )
+        parser = GraniteToolParser(tokenizer)
+        result = parser.extract_tool_calls("Just a regular message.", _make_request())
+        assert not result.tools_called
+        assert len(result.tool_calls) == 0
+
+
+def _make_request():
+    return ChatCompletionRequest(messages=[], model="test-model")
